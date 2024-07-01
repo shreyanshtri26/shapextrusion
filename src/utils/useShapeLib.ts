@@ -5,11 +5,13 @@ import earcut from "earcut";
 
 export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
   
+  //scene 
   const engineRef = useRef<BABYLON.Engine | null>(null);
   const sceneRef = useRef<BABYLON.Scene | null>(null);
   const groundRef = useRef<BABYLON.GroundMesh | null>(null);
   const [camera, setCamera] = useState<BABYLON.ArcRotateCamera | null>(null);
 
+  //shapes
   const [isSketchMode, setIsSketchMode] = useState<Boolean>(false);
   const [isMoveMode, setIsMoveMode] = useState<Boolean>(false);
   const [points, setPoints] = useState<BABYLON.Vector3[]>([]);
@@ -24,6 +26,7 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
   const faceIdRef = useRef<number>(-1);
   const [isDragging, setIsDragging] = useState<Boolean>(false);
 
+  //setup scene
   useEffect(() => {
     if (canvasRef.current) {
       const engine = new BABYLON.Engine(canvasRef.current, true);
@@ -56,14 +59,15 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
       };
     }
   }, [canvasRef?.current?.id]);
-
+  
+  //adjust camera
   const adjustViewOnSketchModeToggle = () => {
     if(isSketchMode) {
       setCamera(prevCamera => {
         if(!prevCamera) return null;
-        prevCamera.alpha = -Math.PI /2 ; 
+        prevCamera.alpha = -Math.PI /2 ; //other adjustments
         prevCamera.beta = -Math.PI/2;
-        prevCamera.radius = 10;
+        prevCamera.radius = 10; // Adjust size of your scene
         return prevCamera;
       });
       camera?.detachControl();
@@ -71,15 +75,16 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
     else  {
       setCamera(prevCamera => {
         if(!prevCamera) return null;
-        prevCamera.alpha = -Math.PI / 2; 
+        prevCamera.alpha = -Math.PI / 2; //other adjustments
         prevCamera.beta = Math.PI / 3;
-        prevCamera.radius = 15;
+        prevCamera.radius = 15; // Adjust based on the size of your scene
         return prevCamera;
       });
       camera?.attachControl(canvasRef.current, false);
     }
   }
- 
+  
+  //adjust camera toggle view
   const adjustViewOnMoveModeToggle = () => {
     if(isMoveMode) {
 
@@ -119,7 +124,7 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
   useEffect(() => {
     if(isVertexEditMode) {
       if(targetGeometryIdxRef.current==-1) {
-        alert("Initally select an object then edit vertex");
+        alert("Please select an object first to edit vertex");
         toggleVertexEditMode();
         return;
       }
@@ -165,11 +170,11 @@ const toggleCloseShape = () => setIsCloseShape(prevVal => !prevVal);
 
 const completeSketch=() => {
   const line = BABYLON.MeshBuilder.CreateLines(
-    `line${points.length+1}`,
+    `line${points.length+1}`, // Unique each line
     {
         points: [
-            points[points.length - 1], 
-            points[0], 
+            points[points.length - 1], // last point
+            points[0], // first point
         ],
     },
     sceneRef.current
@@ -325,9 +330,11 @@ const pointerUpMoveMode = () => {
 const moveOrCreateDragBox = (position: BABYLON.Vector3) => {
   if (!sceneRef.current) return;
   if (!dragBoxRef.current) {
+    // drag box if not exist
     dragBoxRef.current = BABYLON.MeshBuilder.CreateSphere("dragBox", {diameter: 0.2}, sceneRef.current);
     dragBoxRef.current.material = dragBoxMaterial(sceneRef.current);
   }
+  // Move the drag box to the position
   dragBoxRef.current.position = position.clone();
 };
 
@@ -335,54 +342,82 @@ function findCornerVerticesFromFaceHit(
   pickedMesh: BABYLON.AbstractMesh,
   faceId: number 
 ): BABYLON.Vector3[] {
+  // Retrieve the index data for the mesh. Indices are integers that reference the vertices array, determining which vertices make up each face of the mesh.
   const indices = pickedMesh.getIndices();
+  
+  // Retrieve the positions of all vertices in the mesh. This is a flat array where every three values represent the x, y, z coordinates of a vertex.
   const positions = pickedMesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+
+  // Check for completeness of the mesh data. If any of these arrays are null or undefined, the mesh is considered incomplete for this operation.
   if (!indices || !positions) {
     console.error('Mesh data is incomplete');
-    return []; 
+    return []; // Return an empty array as we cannot proceed without complete data.
   }
+
+  // Calculate the indices of the vertices that make up the hit face. Since each face of a mesh is typically formed by three vertices (forming a triangle), and 'faceId' gives us the specific face, we find the corresponding vertex indices by multiplying 'faceId' by 3 and accessing the 'indices' array.
   const faceVertexIndices = [
-    indices[faceId * 3],     
-    indices[faceId * 3 + 1], 
-    indices[faceId * 3 + 2], 
+    indices[faceId * 3],     // Index of the first vertex of the face
+    indices[faceId * 3 + 1], // Index of the second vertex
+    indices[faceId * 3 + 2], // Index of the third vertex
   ];
 
+  // Convert the vertex indices to their actual Vector3 positions. This involves mapping each index to its corresponding position in the 'positions' array. Since 'positions' is a flat array, each group of three values (x, y, z) represents one vertex. We access these groups using the indices we found earlier.
   const faceVertexPositions = faceVertexIndices.map(index => {
-    const posIndex = index * 3;
+    const posIndex = index * 3; // Calculate the starting index in the 'positions' array for this vertex.
     return new BABYLON.Vector3(
-      positions[posIndex],     
-      positions[posIndex + 1], 
-      positions[posIndex + 2] 
+      positions[posIndex],     // x value of the vertex
+      positions[posIndex + 1], // y value of the vertex
+      positions[posIndex + 2]  // z value of the vertex
     );
   });
-   return faceVertexPositions;
+
+  // Return the positions of the vertices that make up the hit face. This array of Vector3 objects represents the corners of the face in 3D space, allowing further operations (such as finding the closest vertex to a point) to be performed on this specific face.
+  return faceVertexPositions;
 }
 
 const getClosestVertexToPickedPoint: (geometry: BABYLON.Mesh | BABYLON.AbstractMesh, point: BABYLON.Vector3, faceId: number) => BABYLON.Vector3 | null = (
-  geometry: BABYLON.Mesh | BABYLON.AbstractMesh, 
-  point: BABYLON.Vector3, 
-  hitFaceId: number 
+  geometry: BABYLON.Mesh | BABYLON.AbstractMesh, // The geometry/mesh being examined.
+  point: BABYLON.Vector3, // The world space point that was picked/clicked.
+  hitFaceId: number // The ID of the face that was initially hit, used to limit the search to vertices of this face.
 ) => {
   const THRESHOLD_DISTANCE=5;
+  // First, get the positions of the vertices that make up the hit face.
   const vertices = findCornerVerticesFromFaceHit(geometry, hitFaceId);
 
-  let minDistVx: BABYLON.Vector3 | null = null;
-  let minDist = Infinity;
+  let minDistVx: BABYLON.Vector3 | null = null; // This will hold the closest vertex position in world space.
+  let minDist = Infinity; // Initialize with infinity to ensure any real distance is smaller.
 
+  // Compute the inverse of the world matrix to transform the picked point to the local space of the geometry.
   const inverseWorldMatrix = geometry.computeWorldMatrix(true).invert();
   const localPointPos = BABYLON.Vector3.TransformCoordinates(point, inverseWorldMatrix);
 
+  // Loop through each vertex of the hit face.
   vertices.forEach(vertex => {
+    // Calculate the distance from the current vertex to the picked point, both in local space.
     const distance = BABYLON.Vector3.Distance(vertex, localPointPos);
+    // console.log(distance);
+    // If this distance is the smallest so far, update minDist and minDistVx.
     if (distance < minDist && THRESHOLD_DISTANCE<=5) {
       minDist = distance;
+      // Transform the closest vertex position back to world space before storing.
       minDistVx = BABYLON.Vector3.TransformCoordinates(vertex, geometry.computeWorldMatrix(true));
     }
   });
+
+  // Return the position of the closest vertex in world space.
   return minDistVx;
 }
 
 const pointerDownVertexEditMode=() => {
+  // console.log({
+  //   isVertexEditMode,
+  //   dragBoxRef: dragBoxRef.current,
+  //   targetGeometryIdxRef: targetGeometryIdxRef.current,
+  //   geometries,
+  //   selectedGeometry,
+  //   initialOffsetRef: initialOffsetRef.current,
+  //   faceIdRef: faceIdRef.current
+  // });
   if(!sceneRef.current) return;
   const pickingRay = sceneRef.current.createPickingRay(
     sceneRef.current.pointerX,
@@ -390,10 +425,12 @@ const pointerDownVertexEditMode=() => {
     BABYLON.Matrix.Identity(),
     camera
   );
+  // console.log(pickingRay);
   const pickInfo = sceneRef.current.pickWithRay(pickingRay);
 
   if(!pickInfo) return;
   const { hit, pickedMesh, pickedPoint, faceId } = pickInfo;
+  // console.log({ hit, pickedMesh, pickedPoint, faceId });
   if(!hit || !pickedMesh || !pickedPoint || !faceId) return;
   if(pickedMesh==groundRef.current) return;
   pickedMesh.isPickable=true;
@@ -405,6 +442,7 @@ const pointerDownVertexEditMode=() => {
   
   faceIdRef.current=faceId;
   const closestVertex=getClosestVertexToPickedPoint(pickedMesh, pickedPoint, faceId);
+  // console.log(closestVertex);
   if(!closestVertex) {
     console.error('couldn\'t locate closest vertex');
     return;
@@ -430,6 +468,8 @@ const pointerDownVertexEditMode=() => {
     console.error('couldn\'t get ground position');
     return;
   }
+   
+  // const offset = dragBoxRef.current.position.subtract(currentPos);
   const offset=BABYLON.Vector3.TransformCoordinates(pickedPoint, pickedMesh.computeWorldMatrix(true));
   initialOffsetRef.current=offset;
   setIsDragging(true);
@@ -462,7 +502,10 @@ const pointerMoveVertexEditMode = () => {
     console.error("couldn't find target geometry");
     return;
   }
+
+  // Calculate displacement in world coordinates.
   const displacement = currentPos.subtract(initialOffsetRef.current);
+
   const positions = target.getVerticesData(BABYLON.VertexBuffer.PositionKind);
   const indices = target.getIndices();
   if (!positions || !indices) return;
@@ -470,16 +513,21 @@ const pointerMoveVertexEditMode = () => {
 
   for (let i = 0; i < positions.length; i += 3) {
     if (Math.abs(positions[i] - dragBoxRef.current.position.x) < BABYLON.Epsilon && Math.abs(positions[i + 2] - dragBoxRef.current.position.z) < BABYLON.Epsilon) {
-        positions[i] += displacement.x; 
-        positions[i + 2] += displacement.z; 
+        positions[i] += displacement.x; // Update x position based on displacement
+        positions[i + 2] += displacement.z; // Update z position based on displacement
     }   
   }
+
+
+  // Apply the updated positions back to the geometry.
   target.updateVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
   target.bakeCurrentTransformIntoVertices();
   setSelectedGeometry(target);
 
   dragBoxRef.current.position.x+=displacement.x;
   dragBoxRef.current.position.z+=displacement.z;
+
+  // Update the initial offset for the next movement calculation.
   initialOffsetRef.current = currentPos;
 };
 
@@ -495,10 +543,17 @@ const pointerUpVertexEditMode = () => {
   
 }
 
+
+  // Setup event listeners for sketch, move and vertexEdit modes
+  
+  
   useEffect(() => {
 
     if(!sceneRef.current) return;
     const obs = sceneRef.current?.onPointerObservable.add((pointerInfo) => {
+        // console.log(pointerInfo);
+
+        //if in sketch mode, draw when mouse is clicked & complete sketch when mouse + shft is clicked
         if(isSketchMode && pointerInfo.event.button==0) {
             switch(pointerInfo.event.shiftKey) {
 
@@ -514,6 +569,7 @@ const pointerUpVertexEditMode = () => {
                   break;
             }
         }
+        //if in moveMode, select when mouse is clicked, move object on mouse movement and release at position of next mouse click
         else if(isMoveMode) {
             switch (pointerInfo.type) {
                 case BABYLON.PointerEventTypes.POINTERDOWN:
@@ -529,6 +585,7 @@ const pointerUpVertexEditMode = () => {
 
             }
         }
+        //if in vertexEditMode, select vertex to drag when mouse is clicked, drag vertex on mouse movement and update object shape and release at position of next mouse click
         else if(isVertexEditMode) {
             switch(pointerInfo.type) {
               case BABYLON.PointerEventTypes.POINTERDOWN:

@@ -46,8 +46,8 @@ ShapeXtrusion is a fun web that lets you turn 2D sketches into 3D objects right 
    npm start
 
    ```
-   ```
-4. Wait for the magic to happen, and you're in!
+   
+4. Wait for the magic to happen, and you're in  Local:   http://localhost:5173/ !
 
 ### Draw Mode
 It's like having a digital pen. Click around to create your shape.

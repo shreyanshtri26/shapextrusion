@@ -4,6 +4,10 @@
 
 ShapeXtrusion is a fun web that lets you turn 2D sketches into 3D objects right in your browser. It's built with React and Babylon.js, turning your mouse into a magic wand for 3D creation.
 
+## Demo Video
+
+[Watch the demo video](https://www.loom.com/share/6b57f5d0169b4bd5b98ab6eff1f19246?sid=194fb99f-7950-4729-9391-7dbe8341d500)
+
 ## Cool Things You Can Do
 
 - 🖌️ **Draw**: Draw any 2D shape on a virtual ground

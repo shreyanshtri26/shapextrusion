@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useShapeLib } from '../utils/useShapeLib.js';
 import ControlPanel from './ControlPanel.js';
-import * as BABYLON from 'babylonjs';
 
 const Scene: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -15,7 +14,6 @@ const Scene: React.FC = () => {
     toggleMoveMode, 
     isVertexEditMode, 
     toggleVertexEditMode,
-    camera,
     resetView,
     toggleGrid,
     isGridVisible,

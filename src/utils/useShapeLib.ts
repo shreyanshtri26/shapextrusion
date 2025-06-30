@@ -13,10 +13,10 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
   const [camera, setCamera] = useState<BABYLON.ArcRotateCamera | null>(null);
 
   //shapes
-  const [isSketchMode, setIsSketchMode] = useState<Boolean>(false);
-  const [isMoveMode, setIsMoveMode] = useState<Boolean>(false);
+  const [isSketchMode, setIsSketchMode] = useState<boolean>(false);
+  const [isMoveMode, setIsMoveMode] = useState<boolean>(false);
   const [points, setPoints] = useState<BABYLON.Vector3[]>([]);
-  const [isCloseShape, setIsCloseShape] = useState<Boolean>(false);
+  const [isCloseShape, setIsCloseShape] = useState<boolean>(false);
   const [linesMesh, setLinesMesh] = useState<BABYLON.LinesMesh[]>([]);
   const [geometries, setGeometries] = useState<BABYLON.Mesh[]>([]);
   const targetGeometryIdxRef = useRef<number>(-1);
@@ -25,7 +25,7 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
   const [isVertexEditMode, setIsVertexEditMode] = useState(false);
   const dragBoxRef = useRef<BABYLON.Mesh | null>(null);
   const faceIdRef = useRef<number>(-1);
-  const [isDragging, setIsDragging] = useState<Boolean>(false);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
 
   // Add grid state
   const [isGridVisible, setIsGridVisible] = useState(true);
@@ -755,39 +755,33 @@ const pointerUpVertexEditMode = () => {
   };
 
   // Mouse event handlers
-  const handlePointerDown = (event: PointerEvent) => {
+  const handlePointerDown = (_event: PointerEvent) => {
     if (!sceneRef.current) return;
+    const pickInfo = sceneRef.current.pick(
+      sceneRef.current.pointerX,
+      sceneRef.current.pointerY
+    );
 
     if (isSketchMode) {
       handleSketch();
     } else if (isMoveMode) {
-      const pickInfo = sceneRef.current.pick(
-        sceneRef.current.pointerX,
-        sceneRef.current.pointerY
-      );
       pointerDownMoveMode(pickInfo);
     } else if (isVertexEditMode) {
-      const pickInfo = sceneRef.current.pick(
-        sceneRef.current.pointerX,
-        sceneRef.current.pointerY
-      );
       pointerDownVertexEditMode();
     }
   };
 
-  const handlePointerMove = (event: PointerEvent) => {
+  const handlePointerMove = (_event: PointerEvent) => {
     if (!sceneRef.current) return;
-
     if (isMoveMode) {
       pointerMoveMoveMode();
-    } else if (isVertexEditMode && isDragging) {
+    } else if (isVertexEditMode) {
       pointerMoveVertexEditMode();
     }
   };
 
-  const handlePointerUp = (event: PointerEvent) => {
+  const handlePointerUp = (_event: PointerEvent) => {
     if (!sceneRef.current) return;
-
     if (isMoveMode) {
       pointerUpMoveMode();
     } else if (isVertexEditMode) {
@@ -795,9 +789,8 @@ const pointerUpVertexEditMode = () => {
     }
   };
 
-  const handleWheel = (event: WheelEvent) => {
-    // Camera zoom is handled automatically by BabylonJS
-    // We can add custom behavior here if needed
+  const handleWheel = (_event: WheelEvent) => {
+    // Wheel handling is done by BabylonJS camera controls
   };
 
   return {

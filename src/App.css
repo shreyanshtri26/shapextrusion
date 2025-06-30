@@ -127,7 +127,7 @@ button[title]:hover::after {
 .canvas-container {
   flex: 1;
   position: relative;
-}
+  }
 
 .tooltip {
   position: absolute;

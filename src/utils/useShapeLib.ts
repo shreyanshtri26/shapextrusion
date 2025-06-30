@@ -117,15 +117,6 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
     }
   }
   
-  const adjustViewOnVertexDrag = () => {
-    if(isDragging) {
-      camera?.detachControl();
-    }
-    else {
-      camera?.attachControl(canvasRef.current, false);
-    }
-  }
-  
   const toggleSketchMode = () => setIsSketchMode(prevValue => !prevValue);
   useEffect(() => {
     adjustViewOnSketchModeToggle();
@@ -348,87 +339,6 @@ const pointerUpMoveMode = () => {
     initialOffsetRef.current=null;
 };
 
-
-const moveOrCreateDragBox = (position: BABYLON.Vector3) => {
-  if (!sceneRef.current) return;
-  if (!dragBoxRef.current) {
-    // drag box if not exist
-    dragBoxRef.current = BABYLON.MeshBuilder.CreateSphere("dragBox", {diameter: 0.2}, sceneRef.current);
-    dragBoxRef.current.material = dragBoxMaterial(sceneRef.current);
-  }
-  // Move the drag box to the position
-  dragBoxRef.current.position = position.clone();
-};
-
-function findCornerVerticesFromFaceHit(
-  pickedMesh: BABYLON.AbstractMesh,
-  faceId: number 
-): BABYLON.Vector3[] {
-  // Retrieve the index data for the mesh. Indices are integers that reference the vertices array, determining which vertices make up each face of the mesh.
-  const indices = pickedMesh.getIndices();
-  
-  // Retrieve the positions of all vertices in the mesh. This is a flat array where every three values represent the x, y, z coordinates of a vertex.
-  const positions = pickedMesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-
-  // Check for completeness of the mesh data. If any of these arrays are null or undefined, the mesh is considered incomplete for this operation.
-  if (!indices || !positions) {
-    console.error('Mesh data is incomplete');
-    return []; // Return an empty array as we cannot proceed without complete data.
-  }
-
-  // Calculate the indices of the vertices that make up the hit face. Since each face of a mesh is typically formed by three vertices (forming a triangle), and 'faceId' gives us the specific face, we find the corresponding vertex indices by multiplying 'faceId' by 3 and accessing the 'indices' array.
-  const faceVertexIndices = [
-    indices[faceId * 3],     // Index of the first vertex of the face
-    indices[faceId * 3 + 1], // Index of the second vertex
-    indices[faceId * 3 + 2], // Index of the third vertex
-  ];
-
-  // Convert the vertex indices to their actual Vector3 positions. This involves mapping each index to its corresponding position in the 'positions' array. Since 'positions' is a flat array, each group of three values (x, y, z) represents one vertex. We access these groups using the indices we found earlier.
-  const faceVertexPositions = faceVertexIndices.map(index => {
-    const posIndex = index * 3; // Calculate the starting index in the 'positions' array for this vertex.
-    return new BABYLON.Vector3(
-      positions[posIndex],     // x value of the vertex
-      positions[posIndex + 1], // y value of the vertex
-      positions[posIndex + 2]  // z value of the vertex
-    );
-  });
-
-  // Return the positions of the vertices that make up the hit face. This array of Vector3 objects represents the corners of the face in 3D space, allowing further operations (such as finding the closest vertex to a point) to be performed on this specific face.
-  return faceVertexPositions;
-}
-
-const getClosestVertexToPickedPoint: (geometry: BABYLON.Mesh | BABYLON.AbstractMesh, point: BABYLON.Vector3, faceId: number) => BABYLON.Vector3 | null = (
-  geometry: BABYLON.Mesh | BABYLON.AbstractMesh, // The geometry/mesh being examined.
-  point: BABYLON.Vector3, // The world space point that was picked/clicked.
-  hitFaceId: number // The ID of the face that was initially hit, used to limit the search to vertices of this face.
-) => {
-  const THRESHOLD_DISTANCE=5;
-  // First, get the positions of the vertices that make up the hit face.
-  const vertices = findCornerVerticesFromFaceHit(geometry, hitFaceId);
-
-  let minDistVx: BABYLON.Vector3 | null = null; // This will hold the closest vertex position in world space.
-  let minDist = Infinity; // Initialize with infinity to ensure any real distance is smaller.
-
-  // Compute the inverse of the world matrix to transform the picked point to the local space of the geometry.
-  const inverseWorldMatrix = geometry.computeWorldMatrix(true).invert();
-  const localPointPos = BABYLON.Vector3.TransformCoordinates(point, inverseWorldMatrix);
-
-  // Loop through each vertex of the hit face.
-  vertices.forEach(vertex => {
-    // Calculate the distance from the current vertex to the picked point, both in local space.
-    const distance = BABYLON.Vector3.Distance(vertex, localPointPos);
-    // console.log(distance);
-    // If this distance is the smallest so far, update minDist and minDistVx.
-    if (distance < minDist && THRESHOLD_DISTANCE<=5) {
-      minDist = distance;
-      // Transform the closest vertex position back to world space before storing.
-      minDistVx = BABYLON.Vector3.TransformCoordinates(vertex, geometry.computeWorldMatrix(true));
-    }
-  });
-
-  // Return the position of the closest vertex in world space.
-  return minDistVx;
-}
 
 // Function to find connected vertices
 const findConnectedVertices = (mesh: BABYLON.Mesh, vertexIndex: number): number[] => {

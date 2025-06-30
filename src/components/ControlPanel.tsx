@@ -82,7 +82,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           className={isGridVisible ? 'active' : ''}
           title="Toggle grid visibility (Press G)"
         >
-          {isGridVisible ? '📏 Hide Grid' : '📏 Show Grid'}
+          {isGridVisible ? '📏 Hide Ruler' : '📏 Show Ruler'}
         </button>
       </div>
 

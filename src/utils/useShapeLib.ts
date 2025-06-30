@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import * as BABYLON from 'babylonjs';
 import { defaultGeometryMaterial, dragBoxMaterial, selectedGeometryMaterial } from './material.js';
+import { createGrid } from './visual.js';
 import earcut from "earcut";
 
 export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
@@ -26,6 +27,19 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
   const faceIdRef = useRef<number>(-1);
   const [isDragging, setIsDragging] = useState<Boolean>(false);
 
+  // Add grid state
+  const [isGridVisible, setIsGridVisible] = useState(true);
+  const gridRef = useRef<BABYLON.LinesMesh | null>(null);
+
+  // Enhanced vertex editing state
+  const selectedVertexRef = useRef<{
+    vertex: BABYLON.Vector3;
+    index: number;
+    connectedIndices: number[];
+  } | null>(null);
+  const selectedMeshRef = useRef<BABYLON.Mesh | null>(null);
+  const startingVertexPositionRef = useRef<BABYLON.Vector3 | null>(null);
+
   //setup scene
   useEffect(() => {
     if (canvasRef.current) {
@@ -40,10 +54,18 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
       
       const camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, Math.PI / 3, 10, BABYLON.Vector3.Zero(), scene);
       camera.attachControl(canvasRef.current, true);
+      camera.wheelPrecision = 50; // Adjust zoom sensitivity
+      camera.pinchPrecision = 50;
+      camera.lowerRadiusLimit = 5; // Minimum zoom distance
+      camera.upperRadiusLimit = 50; // Maximum zoom distance
       setCamera(camera);
 
-      const ground = BABYLON.MeshBuilder.CreateGround('groundPlane', { width: 10, height: 10})
+      const ground = BABYLON.MeshBuilder.CreateGround('groundPlane', { width: 20, height: 20})
       groundRef.current=ground; 
+
+      // Create and store grid
+      const grid = createGrid(scene, 20, 20);
+      gridRef.current = grid;
 
       engine.runRenderLoop(() => {
         scene.render();
@@ -408,140 +430,228 @@ const getClosestVertexToPickedPoint: (geometry: BABYLON.Mesh | BABYLON.AbstractM
   return minDistVx;
 }
 
-const pointerDownVertexEditMode=() => {
-  // console.log({
-  //   isVertexEditMode,
-  //   dragBoxRef: dragBoxRef.current,
-  //   targetGeometryIdxRef: targetGeometryIdxRef.current,
-  //   geometries,
-  //   selectedGeometry,
-  //   initialOffsetRef: initialOffsetRef.current,
-  //   faceIdRef: faceIdRef.current
-  // });
-  if(!sceneRef.current) return;
-  const pickingRay = sceneRef.current.createPickingRay(
-    sceneRef.current.pointerX,
-    sceneRef.current.pointerY,
-    BABYLON.Matrix.Identity(),
-    camera
-  );
-  // console.log(pickingRay);
-  const pickInfo = sceneRef.current.pickWithRay(pickingRay);
+// Function to find connected vertices
+const findConnectedVertices = (mesh: BABYLON.Mesh, vertexIndex: number): number[] => {
+  const indices = mesh.getIndices();
+  const positions = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+  if (!indices || !positions) return [];
 
-  if(!pickInfo) return;
-  const { hit, pickedMesh, pickedPoint, faceId } = pickInfo;
-  // console.log({ hit, pickedMesh, pickedPoint, faceId });
-  if(!hit || !pickedMesh || !pickedPoint || !faceId) return;
-  if(pickedMesh==groundRef.current) return;
-  pickedMesh.isPickable=true;
+  const connectedIndices = new Set<number>();
   
-  if(!faceId) {
-    console.error('can\'t find faceId of hit on pickedMesh');
-    return;
+  // Look through triangles to find connected vertices
+  for (let i = 0; i < indices.length; i += 3) {
+    const tri = [indices[i] * 3, indices[i + 1] * 3, indices[i + 2] * 3];
+    
+    if (tri.includes(vertexIndex)) {
+      // Add all vertices from this triangle except the selected one
+      tri.forEach(idx => {
+        if (idx !== vertexIndex) {
+          connectedIndices.add(idx);
+        }
+      });
+    }
   }
-  
-  faceIdRef.current=faceId;
-  const closestVertex=getClosestVertexToPickedPoint(pickedMesh, pickedPoint, faceId);
-  // console.log(closestVertex);
-  if(!closestVertex) {
-    console.error('couldn\'t locate closest vertex');
-    return;
-  }
-  const positions=pickedMesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-  if(!positions) {
-    console.log('unable to get vertices of pickedMesh');
-    return;
-  }
-  moveOrCreateDragBox(closestVertex);
-  if(!dragBoxRef.current) {
-    console.error('couldn\'t move or create dragBox');
-    return;
-  }
-  targetGeometryIdxRef.current=geometries.findIndex(geom => geom.name==pickedMesh.name);
-  if(targetGeometryIdxRef.current==-1) {
-    console.error('couldn\'t find targeted geometry');
-    return; 
-  }
-  
-  const currentPos = getGroundPosition();
-  if(!currentPos) {
-    console.error('couldn\'t get ground position');
-    return;
-  }
-   
-  // const offset = dragBoxRef.current.position.subtract(currentPos);
-  const offset=BABYLON.Vector3.TransformCoordinates(pickedPoint, pickedMesh.computeWorldMatrix(true));
-  initialOffsetRef.current=offset;
-  setIsDragging(true);
+
+  return Array.from(connectedIndices);
 };
-useEffect(() => {
-  adjustViewOnVertexDrag()
-}, [isDragging])
 
+// Function to find the closest vertex to a point
+const findClosestVertex = (mesh: BABYLON.Mesh, pickingPoint: BABYLON.Vector3): { 
+  vertex: BABYLON.Vector3; 
+  index: number;
+  connectedIndices: number[];
+} | null => {
+  const positions = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+  if (!positions) return null;
+
+  let closestVertex = null;
+  let closestDistance = Infinity;
+  let closestIndex = -1;
+
+  // Check each vertex
+  for (let i = 0; i < positions.length; i += 3) {
+    const vertex = new BABYLON.Vector3(
+      positions[i],
+      positions[i + 1],
+      positions[i + 2]
+    );
+    // Transform vertex to world space
+    const worldVertex = BABYLON.Vector3.TransformCoordinates(
+      vertex,
+      mesh.getWorldMatrix()
+    );
+    const distance = BABYLON.Vector3.Distance(worldVertex, pickingPoint);
+
+    if (distance < closestDistance && distance < 0.5) { // 0.5 is the selection threshold
+      closestDistance = distance;
+      closestVertex = worldVertex;
+      closestIndex = i;
+    }
+  }
+
+  if (!closestVertex) return null;
+
+  // Find connected vertices
+  const connectedIndices = findConnectedVertices(mesh, closestIndex);
+
+  return {
+    vertex: closestVertex,
+    index: closestIndex,
+    connectedIndices
+  };
+};
+
+// Function to update vertex position with connected vertices adjustment
+const updateVertexPosition = (
+  mesh: BABYLON.Mesh, 
+  vertexIndex: number, 
+  newPosition: BABYLON.Vector3,
+  connectedIndices: number[]
+) => {
+  const positions = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+  if (!positions) return;
+
+  // Convert world position to local position
+  const worldMatrix = mesh.getWorldMatrix();
+  const localPosition = BABYLON.Vector3.TransformCoordinates(
+    newPosition,
+    BABYLON.Matrix.Invert(worldMatrix)
+  );
+
+  // Get the movement delta
+  const oldPosition = new BABYLON.Vector3(
+    positions[vertexIndex],
+    positions[vertexIndex + 1],
+    positions[vertexIndex + 2]
+  );
+  const movementDelta = localPosition.subtract(oldPosition);
+
+  // Update main vertex position
+  positions[vertexIndex] = localPosition.x;
+  positions[vertexIndex + 1] = localPosition.y;
+  positions[vertexIndex + 2] = localPosition.z;
+
+  // Update connected vertices with scaled movement
+  connectedIndices.forEach(connIndex => {
+    const connectedVertex = new BABYLON.Vector3(
+      positions[connIndex],
+      positions[connIndex + 1],
+      positions[connIndex + 2]
+    );
+
+    // Calculate distance factor (vertices further away move less)
+    const distance = BABYLON.Vector3.Distance(oldPosition, connectedVertex);
+    const scaleFactor = Math.max(0, 1 - distance / 2); // Adjust the divisor to control the influence range
+
+    // Apply scaled movement
+    positions[connIndex] += movementDelta.x * scaleFactor;
+    positions[connIndex + 1] += movementDelta.y * scaleFactor;
+    positions[connIndex + 2] += movementDelta.z * scaleFactor;
+  });
+
+  // Update the mesh
+  mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
+  mesh.refreshBoundingInfo();
+  mesh.computeWorldMatrix(true);
+};
+
+const pointerDownVertexEditMode = () => {
+  if (!sceneRef.current || !isVertexEditMode) return;
+  const scene = sceneRef.current; // Get scene reference
+
+  const pickResult = scene.pick(
+    scene.pointerX,
+    scene.pointerY,
+    (mesh) => geometries.includes(mesh as BABYLON.Mesh)
+  );
+
+  if (pickResult.hit && pickResult.pickedMesh && pickResult.pickedPoint) {
+    const mesh = pickResult.pickedMesh as BABYLON.Mesh;
+    const closest = findClosestVertex(mesh, pickResult.pickedPoint);
+
+    if (closest) {
+      setIsDragging(true);
+      selectedVertexRef.current = closest;
+      selectedMeshRef.current = mesh;
+      startingVertexPositionRef.current = closest.vertex.clone();
+
+      // Visual feedback for selected vertex and connected vertices
+      if (dragBoxRef.current) {
+        dragBoxRef.current.dispose();
+      }
+
+      // Create main vertex indicator
+      const box = BABYLON.MeshBuilder.CreateBox("dragBox", {
+        size: 0.1
+      }, scene);
+      box.position = closest.vertex;
+      box.material = dragBoxMaterial(scene);
+      dragBoxRef.current = box;
+
+      // Highlight connected vertices
+      closest.connectedIndices.forEach(idx => {
+        const connectedPos = new BABYLON.Vector3(
+          mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind)![idx],
+          mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind)![idx + 1],
+          mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind)![idx + 2]
+        );
+        const worldPos = BABYLON.Vector3.TransformCoordinates(
+          connectedPos,
+          mesh.getWorldMatrix()
+        );
+        const connectedBox = BABYLON.MeshBuilder.CreateBox("connectedVertex", {
+          size: 0.05
+        }, scene);
+        connectedBox.position = worldPos;
+        connectedBox.material = defaultGeometryMaterial(scene);
+        connectedBox.metadata = { isConnectedVertex: true };
+      });
+    }
+  }
+};
 
 const pointerMoveVertexEditMode = () => {
-  console.log({
-    isVertexEditMode,
-    dragBoxRef: dragBoxRef.current,
-    targetGeometryIdxRef: targetGeometryIdxRef.current,
-    geometries,
-    selectedGeometry,
-    initialOffsetRef: initialOffsetRef.current,
-    faceIdRef: faceIdRef.current
-  });
-  if (!isVertexEditMode || !dragBoxRef.current || !sceneRef.current || targetGeometryIdxRef.current === -1 || !initialOffsetRef.current || !faceIdRef.current) return;
+  if (!sceneRef.current || !isDragging || !selectedVertexRef.current || !selectedMeshRef.current) return;
 
-  const currentPos = getGroundPosition();
-  if (!currentPos) {
-    console.error("couldn't get ground position");
-    return;
+  const pickResult = sceneRef.current.pick(
+    sceneRef.current.pointerX,
+    sceneRef.current.pointerY,
+    (mesh) => mesh === groundRef.current
+  );
+
+  if (pickResult.hit && pickResult.pickedPoint) {
+    // Update vertex position with connected vertices
+    updateVertexPosition(
+      selectedMeshRef.current,
+      selectedVertexRef.current.index,
+      pickResult.pickedPoint,
+      selectedVertexRef.current.connectedIndices
+    );
+
+    // Update visual feedback
+    if (dragBoxRef.current) {
+      dragBoxRef.current.position = pickResult.pickedPoint;
+    }
   }
-
-  const target = geometries.find(geom => geom.metadata.geomIndex === targetGeometryIdxRef.current);
-  if (!target) {
-    console.error("couldn't find target geometry");
-    return;
-  }
-
-  // Calculate displacement in world coordinates.
-  const displacement = currentPos.subtract(initialOffsetRef.current);
-
-  const positions = target.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-  const indices = target.getIndices();
-  if (!positions || !indices) return;
-
-
-  for (let i = 0; i < positions.length; i += 3) {
-    if (Math.abs(positions[i] - dragBoxRef.current.position.x) < BABYLON.Epsilon && Math.abs(positions[i + 2] - dragBoxRef.current.position.z) < BABYLON.Epsilon) {
-        positions[i] += displacement.x; // Update x position based on displacement
-        positions[i + 2] += displacement.z; // Update z position based on displacement
-    }   
-  }
-
-
-  // Apply the updated positions back to the geometry.
-  target.updateVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
-  target.bakeCurrentTransformIntoVertices();
-  setSelectedGeometry(target);
-
-  dragBoxRef.current.position.x+=displacement.x;
-  dragBoxRef.current.position.z+=displacement.z;
-
-  // Update the initial offset for the next movement calculation.
-  initialOffsetRef.current = currentPos;
 };
-
 
 const pointerUpVertexEditMode = () => {
   setIsDragging(false);
-  initialOffsetRef.current=null;
-  if(dragBoxRef.current) {
-    dragBoxRef.current.parent=null;
-    dragBoxRef.current.dispose();
+  selectedVertexRef.current = null;
+  selectedMeshRef.current = null;
+  startingVertexPositionRef.current = null;
+
+  // Clean up all vertex indicators
+  if (sceneRef.current) {
+    const meshes = sceneRef.current.meshes.slice(); // Create a copy to avoid modification during iteration
+    meshes.forEach(mesh => {
+      if (mesh.metadata?.isConnectedVertex || mesh === dragBoxRef.current) {
+        mesh.dispose();
+      }
+    });
   }
-  dragBoxRef.current=null;
-  
-}
+  dragBoxRef.current = null;
+};
 
 
   // Setup event listeners for sketch, move and vertexEdit modes
@@ -626,6 +736,70 @@ const pointerUpVertexEditMode = () => {
     ]
   );
 
+  // Grid visibility toggle
+  const toggleGrid = () => {
+    setIsGridVisible(prev => !prev);
+    if (gridRef.current) {
+      gridRef.current.isVisible = !gridRef.current.isVisible;
+    }
+  };
+
+  // Reset view function
+  const resetView = () => {
+    if (camera) {
+      camera.alpha = -Math.PI / 2;
+      camera.beta = Math.PI / 3;
+      camera.radius = 15;
+      camera.target = BABYLON.Vector3.Zero();
+    }
+  };
+
+  // Mouse event handlers
+  const handlePointerDown = (event: PointerEvent) => {
+    if (!sceneRef.current) return;
+
+    if (isSketchMode) {
+      handleSketch();
+    } else if (isMoveMode) {
+      const pickInfo = sceneRef.current.pick(
+        sceneRef.current.pointerX,
+        sceneRef.current.pointerY
+      );
+      pointerDownMoveMode(pickInfo);
+    } else if (isVertexEditMode) {
+      const pickInfo = sceneRef.current.pick(
+        sceneRef.current.pointerX,
+        sceneRef.current.pointerY
+      );
+      pointerDownVertexEditMode();
+    }
+  };
+
+  const handlePointerMove = (event: PointerEvent) => {
+    if (!sceneRef.current) return;
+
+    if (isMoveMode) {
+      pointerMoveMoveMode();
+    } else if (isVertexEditMode && isDragging) {
+      pointerMoveVertexEditMode();
+    }
+  };
+
+  const handlePointerUp = (event: PointerEvent) => {
+    if (!sceneRef.current) return;
+
+    if (isMoveMode) {
+      pointerUpMoveMode();
+    } else if (isVertexEditMode) {
+      pointerUpVertexEditMode();
+    }
+  };
+
+  const handleWheel = (event: WheelEvent) => {
+    // Camera zoom is handled automatically by BabylonJS
+    // We can add custom behavior here if needed
+  };
+
   return {
     points,
     linesMesh,
@@ -636,7 +810,16 @@ const pointerUpVertexEditMode = () => {
     extrudeShape,
     geometries,
     isVertexEditMode,
-    toggleVertexEditMode
+    toggleVertexEditMode,
+    camera,
+    resetView,
+    toggleGrid,
+    isGridVisible,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+    handleWheel,
+    isDragging,
   };
 };
 

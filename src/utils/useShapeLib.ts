@@ -115,7 +115,17 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
       // Detach control so sketch stays still
       camera.detachControl();
     } else {
-      // In all other idle states (including Transform/Node Edit idle), allow 360 rotation
+        // Return to Front Perspective view when stopping sketch
+        setCamera(prev => {
+            if (!prev) return null;
+            // Transition back to a front-perspective view
+            prev.beta = Math.PI / 2.2; // Front-ish perspective
+            prev.alpha = -Math.PI / 2; // Face forward
+            prev.radius = 15;
+            return prev;
+        });
+
+      // Allow 360 rotation again
       if (!isDragging) {
         camera.attachControl(canvasRef.current, true);
       }

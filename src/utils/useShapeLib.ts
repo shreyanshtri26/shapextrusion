@@ -99,40 +99,28 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
     }
   }, [canvasRef?.current?.id]);
   
-  //adjust camera
-  const adjustViewOnSketchModeToggle = () => {
-    if(isSketchMode) {
-      setCamera(prevCamera => {
-        if(!prevCamera) return null;
-        prevCamera.alpha = -Math.PI /2 ; //other adjustments
-        prevCamera.beta = -Math.PI/2;
-        prevCamera.radius = 10; // Adjust size of your scene
-        return prevCamera;
+  // Manage camera controls and views based on active tools
+  useEffect(() => {
+    if (!camera || !canvasRef.current) return;
+    
+    if (isSketchMode) {
+      // Switch to Top-Down view for precision sketching
+      setCamera(prev => {
+        if (!prev) return null;
+        prev.alpha = -Math.PI / 2;
+        prev.beta = 0.01; // Almost top-down
+        prev.radius = 12;
+        return prev;
       });
-      camera?.detachControl();
+      // Detach control so sketch stays still
+      camera.detachControl();
+    } else {
+      // In all other idle states (including Transform/Node Edit idle), allow 360 rotation
+      if (!isDragging) {
+        camera.attachControl(canvasRef.current, true);
+      }
     }
-    else  {
-      setCamera(prevCamera => {
-        if(!prevCamera) return null;
-        prevCamera.alpha = -Math.PI / 2; //other adjustments
-        prevCamera.beta = Math.PI / 3;
-        prevCamera.radius = 15; // Adjust based on the size of your scene
-        return prevCamera;
-      });
-      camera?.attachControl(canvasRef.current, false);
-    }
-  }
-  
-  //adjust camera toggle view
-  const adjustViewOnMoveModeToggle = () => {
-    if(isMoveMode) {
-
-      camera?.detachControl();
-    }
-    else  {
-      camera?.attachControl(canvasRef.current, false);
-    }
-  }
+  }, [camera, isSketchMode, isDragging]);
   
   const toggleSketchMode = () => {
     // If we are starting a NEW sketch session, clear the previous one automatically
@@ -149,26 +137,19 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
     setIsSketchMode(prevValue => !prevValue);
   };
   useEffect(() => {
-    adjustViewOnSketchModeToggle();
-  }, [isSketchMode])
+    if (camera && canvasRef.current && !isSketchMode && !isMoveMode && !isVertexEditMode && !isDragging) {
+      camera.attachControl(canvasRef.current, true);
+    }
+  }, [camera, isSketchMode, isMoveMode, isVertexEditMode, isDragging]);
 
   const toggleMoveMode = () => setIsMoveMode(prevValue => !prevValue);
-  useEffect(() => {
-    if(isMoveMode==false) {
-      geometries.forEach(geom => {
-        if(!sceneRef.current) return;
-          geom.material=defaultGeometryMaterial(sceneRef.current);
-      });
-    }
-    adjustViewOnMoveModeToggle();
-  }, [isMoveMode]);
 
   const toggleVertexEditMode = () => setIsVertexEditMode(prevValue => !prevValue);
   useEffect(() => {
     if(isVertexEditMode) {
       if(targetGeometryIdxRef.current==-1) {
         alert("Please select an object first to edit vertex");
-        toggleVertexEditMode();
+        setIsVertexEditMode(false);
         return;
       }
     }

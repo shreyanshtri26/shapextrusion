@@ -21,7 +21,13 @@ const Scene: React.FC = () => {
     handlePointerMove,
     handlePointerUp,
     handleWheel,
-    isDragging
+    isDragging,
+    selectedProps,
+    updateSelectedMeshHeight,
+    updateSelectedMeshColor,
+    zoomIn,
+    zoomOut,
+    clearSketch,
   } = useShapeLib(canvasRef);
 
   // Handle keyboard shortcuts
@@ -53,6 +59,14 @@ const Scene: React.FC = () => {
           break;
         case 'r':
           resetView();
+          break;
+        case '+':
+        case '=':
+          zoomIn();
+          break;
+        case '-':
+        case '_':
+          zoomOut();
           break;
       }
     };
@@ -107,15 +121,21 @@ const Scene: React.FC = () => {
         isSketchMode={isSketchMode}
         isMoveMode={isMoveMode}
         isVertexEditMode={isVertexEditMode}
-        canExtrude={points.length >= 3 && !isSketchMode && !isVertexEditMode}
+        canExtrude={points.length >= 3}
         onToggleSketch={toggleSketchMode}
         onToggleMove={toggleMoveMode}
         onToggleVertexEdit={toggleVertexEditMode}
         onExtrude={extrudeShape}
         onResetView={resetView}
         onToggleGrid={toggleGrid}
+        onClearSketch={clearSketch}
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
         isGridVisible={isGridVisible}
         hasGeometries={geometries.length > 0}
+        selectedProps={selectedProps}
+        onUpdateHeight={updateSelectedMeshHeight}
+        onUpdateColor={updateSelectedMeshColor}
       />
       <canvas 
         ref={canvasRef} 
@@ -123,14 +143,17 @@ const Scene: React.FC = () => {
         height={window.innerHeight} 
       />
       <div className="status-bar">
+        <div className="status-dot"></div>
         {isSketchMode && `Points: ${points.length}`}
         {isMoveMode && 'Move Mode: Click and drag objects'}
         {isVertexEditMode && (isDragging 
           ? 'Dragging vertex... Release to set position' 
           : 'Click any vertex to edit its position')}
+        {!isSketchMode && !isMoveMode && !isVertexEditMode && 'Ready'}
       </div>
     </div>
   );
 };
 
 export default Scene;
+

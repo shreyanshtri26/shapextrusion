@@ -31,8 +31,9 @@ export const pointVisualizationMaterial = (scene: BABYLON.Scene) => {
 
 export const dragBoxMaterial = (scene: BABYLON.Scene) => {
     if(!selectedVxMaterial) {
-        selectedVxMaterial = new BABYLON.StandardMaterial("selectedGeomMaterial", scene);
-        selectedVxMaterial.diffuseColor = BABYLON.Color3.Red();
+        selectedVxMaterial = new BABYLON.StandardMaterial("selectedVxMaterial", scene);
+        selectedVxMaterial.diffuseColor = BABYLON.Color3.FromHexString("#fbbf24"); // Amber/Orange
+        selectedVxMaterial.emissiveColor = BABYLON.Color3.FromHexString("#d97706"); // Glow
     }
     return selectedVxMaterial;
 }

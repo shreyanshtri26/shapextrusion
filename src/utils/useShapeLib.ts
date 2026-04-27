@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import * as BABYLON from 'babylonjs';
-import { defaultGeometryMaterial, dragBoxMaterial, selectedGeometryMaterial } from './material.js';
+import { defaultGeometryMaterial, dragBoxMaterial } from './material.js';
 import { createGrid } from './visual.js';
 import earcut from "earcut";
 
@@ -26,10 +26,18 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
   const dragBoxRef = useRef<BABYLON.Mesh | null>(null);
   const faceIdRef = useRef<number>(-1);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  
+  // Property Inspector states
+  const [selectedProps, setSelectedProps] = useState<{
+    height: number;
+    color: string;
+    name: string;
+  } | null>(null);
 
   // Add grid state
   const [isGridVisible, setIsGridVisible] = useState(true);
   const gridRef = useRef<BABYLON.LinesMesh | null>(null);
+  const previewLineRef = useRef<BABYLON.LinesMesh | null>(null);
 
   // Enhanced vertex editing state
   const selectedVertexRef = useRef<{
@@ -50,7 +58,10 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
       sceneRef.current = scene;
 
       const lighting=new BABYLON.HemisphericLight('light', new BABYLON.Vector3(1,1,1), scene);
-      lighting.intensity=0.8;
+      lighting.intensity=0.7;
+      
+      const pointLight = new BABYLON.PointLight("pointLight", new BABYLON.Vector3(0, 10, 0), scene);
+      pointLight.intensity = 0.5;
       
       const camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, Math.PI / 3, 10, BABYLON.Vector3.Zero(), scene);
       camera.attachControl(canvasRef.current, true);
@@ -62,6 +73,11 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
 
       const ground = BABYLON.MeshBuilder.CreateGround('groundPlane', { width: 20, height: 20})
       groundRef.current=ground; 
+      
+      // Give ground a light material so black lines are visible
+      const groundMat = new BABYLON.StandardMaterial("groundMat", scene);
+      groundMat.diffuseColor = new BABYLON.Color3(0.95, 0.95, 0.95);
+      ground.material = groundMat;
 
       // Create and store grid
       const grid = createGrid(scene, 20, 20);
@@ -117,7 +133,16 @@ export const useShapeLib = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
     }
   }
   
-  const toggleSketchMode = () => setIsSketchMode(prevValue => !prevValue);
+  const toggleSketchMode = () => {
+    if (isSketchMode) {
+      // Cleaning up when exiting
+      if (previewLineRef.current) {
+        previewLineRef.current.dispose();
+        previewLineRef.current = null;
+      }
+    }
+    setIsSketchMode(prevValue => !prevValue);
+  };
   useEffect(() => {
     adjustViewOnSketchModeToggle();
   }, [isSketchMode])
@@ -151,13 +176,47 @@ const addPoint = (point: BABYLON.Vector3) => {
 };
   
 const handleSketch = () => {
-    if (!sceneRef.current) return;
-    if(!isSketchMode) return;
+    if (!sceneRef.current || !isSketchMode) return;
+    
     const groundPlaneName= groundRef.current?.name ?? '';
     const pickResult = sceneRef.current.pick(sceneRef.current.pointerX, sceneRef.current.pointerY, mesh => mesh.name==groundPlaneName);
-    if (!pickResult?.hit) return;
-    if(!pickResult.pickedPoint) return;
+    if (!pickResult?.hit || !pickResult.pickedPoint) return;
+    
+    if (previewLineRef.current) {
+        previewLineRef.current.dispose();
+        previewLineRef.current = null;
+    }
+    
     addPoint(pickResult.pickedPoint);
+};
+
+const updatePreviewLine = () => {
+    if (!isSketchMode || points.length === 0 || !sceneRef.current) return;
+    
+    const currentPos = getGroundPosition();
+    if (!currentPos) return;
+
+    const startPoint = points[points.length - 1];
+    const previewPoints = [startPoint, currentPos];
+
+    if (previewLineRef.current) {
+        // Update existing line
+        const positions = previewLineRef.current.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+        if (positions) {
+            positions[3] = currentPos.x;
+            positions[4] = currentPos.y;
+            positions[5] = currentPos.z;
+            previewLineRef.current.updateVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
+        }
+    } else {
+        // Create new preview line
+        const line = BABYLON.MeshBuilder.CreateLines("previewLine", {
+            points: previewPoints,
+            updatable: true
+        }, sceneRef.current);
+        line.color = new BABYLON.Color3(0.5, 0.5, 0.5); // Gray for preview
+        previewLineRef.current = line;
+    }
 };
   
 const connectRecentTwoPointsWithLine= () => {
@@ -167,7 +226,7 @@ const connectRecentTwoPointsWithLine= () => {
       updatable: true
     }, sceneRef.current
   );
-  line.color = BABYLON.Color3.FromHexString("#000000");
+  line.color = BABYLON.Color3.Black();
   linesMesh.push(line);
   setLinesMesh(prevLines => [...prevLines, line]);
 }
@@ -192,7 +251,7 @@ const completeSketch=() => {
     },
     sceneRef.current
   );
-  line.color = BABYLON.Color3.FromHexString("#000000");
+  line.color = BABYLON.Color3.Black();
   setLinesMesh(prevLines => [...prevLines, line]);
   toggleCloseShape();
   toggleSketchMode();
@@ -207,14 +266,14 @@ useEffect(() => {
   
 const clearSketch = () => {  
   linesMesh.forEach(line => {
-    line.parent=null;
-    line.getChildren().forEach(mesh => mesh.dispose());
     line.dispose();
-
   });
+  if (previewLineRef.current) {
+    previewLineRef.current.dispose();
+    previewLineRef.current = null;
+  }
   setPoints([]);
   setLinesMesh([]);
-
 }
 
 const extrudeShape = () => {
@@ -223,6 +282,10 @@ const extrudeShape = () => {
     alert('Atleast 3 points needed');
     clearSketch();
     return;
+  }
+  
+  if (isSketchMode) {
+    setIsSketchMode(false);
   }
 
   const shape = points.map(p => new BABYLON.Vector3(p.x, 0, p.z));
@@ -241,23 +304,58 @@ const extrudeShape = () => {
 
   extrudedMesh.position.y = 1;
   extrudedMesh.convertToFlatShadedMesh();
-  extrudedMesh.material = selectedGeometryMaterial(sceneRef.current);
+  
+  // Set default color to Red
+  const defaultRed = "#ef4444";
+  const mat = new BABYLON.StandardMaterial("defaultRedMat", sceneRef.current);
+  mat.diffuseColor = BABYLON.Color3.FromHexString(defaultRed);
+  extrudedMesh.material = mat;
   if(!extrudedMesh.metadata) extrudedMesh.metadata={};
-    extrudedMesh.metadata={ geomIndex: geometries.length };
+  extrudedMesh.metadata={ geomIndex: geometries.length, hasCustomColor: true };
+  
   setGeometries(prevItems => {
     const newItems = [...prevItems, extrudedMesh];
     prevItems.forEach(geom => {
       
-      if(sceneRef.current) 
-        geom.material=defaultGeometryMaterial(sceneRef.current);
+      if(sceneRef.current && geom !== extrudedMesh) {
+         // Only reset to gray if it doesn't have a custom color in metadata
+         if (!geom.metadata?.hasCustomColor) {
+           geom.material = defaultGeometryMaterial(sceneRef.current);
+         }
+      }
       
     });
     return newItems;
   });
   targetGeometryIdxRef.current=extrudedMesh.metadata.geomIndex;
   setSelectedGeometry(extrudedMesh);
+  setSelectedProps({
+    height: 1,
+    color: defaultRed,
+    name: extrudedMesh.name
+  });
   clearSketch();
 }
+
+const updateSelectedMeshHeight = (newHeight: number) => {
+  if (!selectedGeometry || !sceneRef.current) return;
+  
+  // Since ExtrudePolygon isn't easily modifiable, we'll scale it for now
+  // A better way would be to recreate it, but scaling Y is a good start
+  selectedGeometry.scaling.y = newHeight;
+  setSelectedProps(prev => prev ? { ...prev, height: newHeight } : null);
+};
+
+const updateSelectedMeshColor = (newColor: string) => {
+  if (!selectedGeometry || !sceneRef.current) return;
+  
+  const material = new BABYLON.StandardMaterial("customMat", sceneRef.current);
+  material.diffuseColor = BABYLON.Color3.FromHexString(newColor);
+  selectedGeometry.material = material;
+  if (!selectedGeometry.metadata) selectedGeometry.metadata = {};
+  selectedGeometry.metadata.hasCustomColor = true;
+  setSelectedProps(prev => prev ? { ...prev, color: newColor } : null);
+};
   
 
 const handleSelectGeometry = (pickInfo: BABYLON.PickingInfo) => {
@@ -268,12 +366,26 @@ const handleSelectGeometry = (pickInfo: BABYLON.PickingInfo) => {
     const selection = geometries.find(geom => geom === pickedMesh) ?? null;
     for(const geom of geometries) {
         if(!sceneRef.current) return;
-        geom.material=defaultGeometryMaterial(sceneRef.current);
+        if (!geom.metadata?.hasCustomColor) {
+          geom.material = defaultGeometryMaterial(sceneRef.current);
+        }
     }
     let selectionIdx=-1;
     if(selection) {
-      selection.material=selectedGeometryMaterial(sceneRef.current);
+      // Highlight selected object with a slight emissive or glow instead of overwriting color
+      // Or just keep the custom color but maybe add a border? 
+      // For now, let's keep the custom color and just ensure the panel updates.
       selectionIdx=selection.metadata.geomIndex;
+      
+      // Update properties for selection
+      const mat = selection.material as BABYLON.StandardMaterial;
+      setSelectedProps({
+        height: selection.scaling.y || 1,
+        color: mat.diffuseColor ? mat.diffuseColor.toHexString() : "#f9f9f9",
+        name: selection.name
+      });
+    } else {
+      setSelectedProps(null);
     }
     targetGeometryIdxRef.current=selectionIdx;
     setSelectedGeometry(selection);
@@ -292,18 +404,27 @@ const pointerDownMoveMode = (pickInfo: BABYLON.PickingInfo) => {
     if (!isMoveMode || !sceneRef.current || !pickInfo.hit || pickInfo.pickedMesh === groundRef.current) return;
     geometries.forEach(geom => {
         if(!sceneRef.current) return;
-        geom.material=defaultGeometryMaterial(sceneRef.current);
+        if (!geom.metadata?.hasCustomColor) {
+          geom.material=defaultGeometryMaterial(sceneRef.current);
+        }
     });
     const selection = geometries.find(geom => geom.name === pickInfo.pickedMesh?.name);
     let selectionIdx=-1;
     if (selection) {
-      selection.material=selectedGeometryMaterial(sceneRef.current);
       const currentPos = getGroundPosition();
       if (currentPos) {
           const offset = selection.position.subtract(currentPos);
           initialOffsetRef.current=offset;
       }
       selectionIdx=selection.metadata.geomIndex;
+      
+      // Update properties for selection
+      const mat = selection.material as BABYLON.StandardMaterial;
+      setSelectedProps({
+        height: selection.scaling.y || 1,
+        color: mat.diffuseColor ? mat.diffuseColor.toHexString() : "#f9f9f9",
+        name: selection.name
+      });
     }
     targetGeometryIdxRef.current=selectionIdx;
 };
@@ -331,8 +452,11 @@ const pointerMoveMoveMode = () => {
 const pointerUpMoveMode = () => {
     geometries.forEach(geom => {
         if(!sceneRef.current) return;
-        if(geom.metadata.geomIndex!=targetGeometryIdxRef.current)
-          geom.material=defaultGeometryMaterial(sceneRef.current);
+        if(geom.metadata.geomIndex!=targetGeometryIdxRef.current) {
+          if (!geom.metadata?.hasCustomColor) {
+            geom.material=defaultGeometryMaterial(sceneRef.current);
+          }
+        }
     });
     targetGeometryIdxRef.current=-1;
     setSelectedGeometry(null);
@@ -392,7 +516,7 @@ const findClosestVertex = (mesh: BABYLON.Mesh, pickingPoint: BABYLON.Vector3): {
     );
     const distance = BABYLON.Vector3.Distance(worldVertex, pickingPoint);
 
-    if (distance < closestDistance && distance < 0.5) { // 0.5 is the selection threshold
+    if (distance < closestDistance && distance < 0.8) { // Increased selection threshold to 0.8
       closestDistance = distance;
       closestVertex = worldVertex;
       closestIndex = i;
@@ -477,6 +601,20 @@ const pointerDownVertexEditMode = () => {
 
   if (pickResult.hit && pickResult.pickedMesh && pickResult.pickedPoint) {
     const mesh = pickResult.pickedMesh as BABYLON.Mesh;
+    
+    // Auto-select if not already target
+    if (targetGeometryIdxRef.current !== mesh.metadata.geomIndex) {
+        targetGeometryIdxRef.current = mesh.metadata.geomIndex;
+        setSelectedGeometry(mesh);
+        // Sync props
+        const mat = mesh.material as BABYLON.StandardMaterial;
+        setSelectedProps({
+          height: mesh.scaling.y || 1,
+          color: mat.diffuseColor ? mat.diffuseColor.toHexString() : "#ef4444",
+          name: mesh.name
+        });
+    }
+
     const closest = findClosestVertex(mesh, pickResult.pickedPoint);
 
     if (closest) {
@@ -492,7 +630,7 @@ const pointerDownVertexEditMode = () => {
 
       // Create main vertex indicator
       const box = BABYLON.MeshBuilder.CreateBox("dragBox", {
-        size: 0.1
+        size: 0.25 // Larger indicator
       }, scene);
       box.position = closest.vertex;
       box.material = dragBoxMaterial(scene);
@@ -510,10 +648,12 @@ const pointerDownVertexEditMode = () => {
           mesh.getWorldMatrix()
         );
         const connectedBox = BABYLON.MeshBuilder.CreateBox("connectedVertex", {
-          size: 0.05
+          size: 0.15 // Larger indicators
         }, scene);
         connectedBox.position = worldPos;
-        connectedBox.material = defaultGeometryMaterial(scene);
+        const connMat = new BABYLON.StandardMaterial("connMat", scene);
+        connMat.diffuseColor = BABYLON.Color3.FromHexString("#6366f1"); // Indigo for connected
+        connectedBox.material = connMat;
         connectedBox.metadata = { isConnectedVertex: true };
       });
     }
@@ -589,6 +729,9 @@ const pointerUpVertexEditMode = () => {
                   break;
             }
         }
+        else if (isSketchMode && pointerInfo.type === BABYLON.PointerEventTypes.POINTERMOVE) {
+            updatePreviewLine();
+        }
         //if in moveMode, select when mouse is clicked, move object on mouse movement and release at position of next mouse click
         else if(isMoveMode) {
             switch (pointerInfo.type) {
@@ -637,6 +780,7 @@ const pointerUpVertexEditMode = () => {
       isSketchMode, 
       isMoveMode, 
       isVertexEditMode,
+      geometries,
       groundRef.current,
       targetGeometryIdxRef.current, 
       faceIdRef.current,
@@ -661,6 +805,18 @@ const pointerUpVertexEditMode = () => {
       camera.beta = Math.PI / 3;
       camera.radius = 15;
       camera.target = BABYLON.Vector3.Zero();
+    }
+  };
+
+  const zoomIn = () => {
+    if (camera) {
+      camera.radius = Math.max(camera.lowerRadiusLimit || 2, camera.radius - 2);
+    }
+  };
+
+  const zoomOut = () => {
+    if (camera) {
+      camera.radius = Math.min(camera.upperRadiusLimit || 50, camera.radius + 2);
     }
   };
 
@@ -723,6 +879,12 @@ const pointerUpVertexEditMode = () => {
     handlePointerUp,
     handleWheel,
     isDragging,
+    selectedProps,
+    updateSelectedMeshHeight,
+    updateSelectedMeshColor,
+    zoomIn,
+    zoomOut,
+    clearSketch,
   };
 };
 

@@ -111,14 +111,14 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             onClick={onToggleMove}
             disabled={!hasGeometries || isSketchMode}
           >
-            <Icons.Move /> Transform
+            <Icons.Move /> {isMoveMode ? 'Stop Transform' : 'Start Transform'}
           </button>
           <button
             className={isVertexEditMode ? 'active' : ''}
             onClick={onToggleVertexEdit}
             disabled={!hasGeometries || isSketchMode}
           >
-            <Icons.Vertex /> Edit Nodes
+            <Icons.Vertex /> {isVertexEditMode ? 'Stop Edit Nodes' : 'Start Edit Nodes'}
           </button>
         </div>
 
@@ -164,16 +164,6 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
         <div className="properties-panel panel">
           <div className="button-group-title">Object Properties</div>
           
-          <div className="property-row">
-            <span className="property-label">Name</span>
-            <input 
-              className="property-input" 
-              type="text" 
-              value={selectedProps.name} 
-              readOnly 
-            />
-          </div>
-
           <div className="property-row">
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span className="property-label">Height</span>

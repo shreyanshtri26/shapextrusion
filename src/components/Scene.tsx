@@ -17,10 +17,6 @@ const Scene: React.FC = () => {
     resetView,
     toggleGrid,
     isGridVisible,
-    handlePointerDown,
-    handlePointerMove,
-    handlePointerUp,
-    handleWheel,
     isDragging,
     selectedProps,
     updateSelectedMeshHeight,
@@ -76,44 +72,7 @@ const Scene: React.FC = () => {
   }, [isSketchMode, isMoveMode, isVertexEditMode, geometries.length]);
 
   // Handle mouse events
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
 
-    const handleCanvasPointerDown = (e: PointerEvent) => {
-      if (e.button === 0) { // Left mouse button
-        handlePointerDown(e);
-      }
-    };
-
-    const handleCanvasPointerMove = (e: PointerEvent) => {
-      if (isDragging || isVertexEditMode) {
-        handlePointerMove(e);
-      }
-    };
-
-    const handleCanvasPointerUp = (e: PointerEvent) => {
-      if (isDragging || isVertexEditMode) {
-        handlePointerUp(e);
-      }
-    };
-
-    const handleCanvasWheel = (e: WheelEvent) => {
-      handleWheel(e);
-    };
-
-    canvas.addEventListener('pointerdown', handleCanvasPointerDown);
-    canvas.addEventListener('pointermove', handleCanvasPointerMove);
-    canvas.addEventListener('pointerup', handleCanvasPointerUp);
-    canvas.addEventListener('wheel', handleCanvasWheel);
-
-    return () => {
-      canvas.removeEventListener('pointerdown', handleCanvasPointerDown);
-      canvas.removeEventListener('pointermove', handleCanvasPointerMove);
-      canvas.removeEventListener('pointerup', handleCanvasPointerUp);
-      canvas.removeEventListener('wheel', handleCanvasWheel);
-    };
-  }, [handlePointerDown, handlePointerMove, handlePointerUp, handleWheel, isDragging, isVertexEditMode]);
 
   return (
     <div className="canvas-container">

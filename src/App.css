@@ -239,3 +239,88 @@ input[type="range"] {
   height: 100vh;
 }
 
+/* Mobile Responsiveness */
+@media (max-width: 1024px) {
+  .control-panel {
+    width: 180px;
+  }
+  .properties-panel {
+    width: 240px;
+  }
+}
+
+@media (max-width: 768px) {
+  .control-panel, .properties-panel {
+    top: 16px;
+    gap: 12px;
+  }
+  .control-panel { left: 16px; width: 160px; }
+  .properties-panel { right: 16px; width: 220px; }
+  
+  .panel {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  button {
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    gap: 8px;
+  }
+  
+  .button-group-title {
+    font-size: 0.65rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .App {
+    flex-direction: column;
+  }
+
+  .control-panel {
+    bottom: 24px;
+    top: auto;
+    left: 24px;
+    right: 24px;
+    width: auto;
+    max-height: 35vh;
+    z-index: 1001;
+  }
+  
+  .properties-panel {
+    top: 24px;
+    right: 24px;
+    left: 24px;
+    width: auto;
+    max-height: 30vh;
+  }
+  
+  .button-group {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  
+  .button-group button {
+    width: auto;
+    flex: 1 1 calc(50% - 6px);
+    font-size: 0.8rem;
+  }
+
+  .button-group-title {
+    width: 100%;
+    margin-bottom: 2px;
+  }
+
+  .status-bar {
+    display: none;
+  }
+}
+
+@media (max-width: 400px) {
+    .button-group button {
+        flex: 1 1 100%;
+    }
+}
+
